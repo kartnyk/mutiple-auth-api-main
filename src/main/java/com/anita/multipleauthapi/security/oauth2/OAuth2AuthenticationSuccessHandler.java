@@ -3,6 +3,7 @@ package com.anita.multipleauthapi.security.oauth2;
 import com.anita.multipleauthapi.config.AppProperties;
 import com.anita.multipleauthapi.model.error.BadRequestException;
 import com.anita.multipleauthapi.security.TokenProvider;
+import com.anita.multipleauthapi.security.UserPrincipal;
 import com.anita.multipleauthapi.service.util.CookieUtils;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.core.user.DefaultOidcUser;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -32,6 +34,24 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
         String targetUrl = determineTargetUrl(request, response, authentication);
 
+        // Handle DefaultOidcUser and map it to UserPrincipal
+        if (authentication.getPrincipal() instanceof DefaultOidcUser) {
+            DefaultOidcUser oidcUser = (DefaultOidcUser) authentication.getPrincipal();
+            String email = oidcUser.getEmail();
+            String name = oidcUser.getFullName();
+
+            // Map OIDC user to UserPrincipal
+            UserPrincipal userPrincipal = new UserPrincipal(
+                null, // ID not available from OIDC
+                email,
+                null, // No password for OIDC users
+                oidcUser.getAuthorities()
+            );
+
+            // Use userPrincipal in your logic if necessary
+            request.getSession().setAttribute("userPrincipal", userPrincipal);
+        }
+
         if (response.isCommitted()) {
             logger.debug("Response has already been committed. Unable to redirect to " + targetUrl);
             return;
@@ -52,6 +72,7 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
         String targetUrl = redirectUri.orElse(getDefaultTargetUrl());
 
+        // Generate JWT token
         String token = tokenProvider.createToken(authentication);
 
         return UriComponentsBuilder.fromUriString(targetUrl)
